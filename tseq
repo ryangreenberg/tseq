@@ -1,0 +1,96 @@
+#!/usr/bin/env ruby
+
+require 'date'
+
+USAGE = <<-EOS
+Usage: #{$PROGRAM_NAME} start:end:interval
+
+For a start time, an end time, and an duration,
+output times that are between the open interval start, end
+
+The start and end can be specified in ISO-8601, unix timestamps, relative syntax
+like `-20w`, or the keyword `now`
+
+Examples:
+
+    2021-01-01:2022-01-01:+1m
+
+    -52w:now:+1w
+
+    -1m:+1m:+1d
+EOS
+
+def parse_datetime(str)
+  # int => date
+  if str =~ /\A[0-9]+\Z/
+    Time.at(str.to_i).to_datetime
+  elsif str =~ /\A([-+])(\d+)([dwmy])\Z/
+    interval = parse_interval(str)
+    interval.advance(DateTime.now)
+  elsif str == 'now'
+    DateTime.now
+  else
+    DateTime.parse(str)
+  end
+end
+
+def parse_interval(str)
+    str =~ /\A([-+])(\d+)([dwmy])\Z/
+    sign = $~[1] == '-' ? -1 : 1
+    count = $~[2].to_i
+    unit = $~[3]
+
+    Interval.new(unit, count, sign)
+end
+
+class Interval
+  attr_reader :unit, :count, :sign
+
+  def initialize(unit, count, sign)
+    @unit = unit
+    @count = count
+    @sign = sign
+  end
+
+  def advance(dt)
+    case unit
+    when 'd'
+      dt + (count * sign)
+    when 'w'
+      dt + (count * 7 * sign)
+    when 'm'
+      sign < 0 ? dt << count : dt >> count
+    end
+  end
+
+  def to_s
+    "#{pretty_sign}#{count}#{unit}"
+  end
+
+  def pretty_sign
+    sign < 0 ? '-' : '+'
+  end
+end
+
+def main(args)
+  iter_raw = args[0]
+  abort USAGE if iter_raw.nil?
+
+  parts = iter_raw.split(':')
+
+  start_dt = parse_datetime(parts[0])
+  end_dt = parse_datetime(parts[1])
+  interval = parse_interval(parts[2])
+
+  warn "START: #{start_dt}"
+  warn "  END: #{end_dt}"
+  warn "DELTA: #{interval}"
+
+  current_dt = start_dt
+  while current_dt <= end_dt
+    puts current_dt.strftime("%Y-%m-%d")
+    current_dt = interval.advance(current_dt)
+  end
+end
+
+main(ARGV) if $PROGRAM_NAME == __FILE__
